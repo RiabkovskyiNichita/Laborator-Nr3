@@ -1,0 +1,113 @@
+import os
+import datetime
+
+class FileHandler:
+    def __init__(self, path):
+        self.path = path
+        self.filename = os.path.basename(path)
+        self.created_time = datetime.datetime.fromtimestamp(os.path.getctime(path))
+        self.updated_time = datetime.datetime.fromtimestamp(os.path.getmtime(path))
+
+    def get_basic_info(self):
+        return {
+            'filename': self.filename,
+            'created_time': self.created_time,
+            'updated_time': self.updated_time,
+            'extension': os.path.splitext(self.filename)[1]
+        }
+
+    def get_detailed_info(self):
+        return self.get_basic_info()
+
+class TextFileHandler(FileHandler):
+    def get_detailed_info(self):
+        info = super().get_detailed_info()
+        with open(self.path, 'r', encoding='utf-8') as file:
+            content = file.readlines()
+            info['line_count'] = len(content)
+            info['word_count'] = sum(len(line.split()) for line in content)
+            info['char_count'] = sum(len(line) for line in content)
+        return info
+
+class ImageFileHandler(FileHandler):
+    def get_detailed_info(self):
+        info = super().get_detailed_info()
+        info['image_size'] = '1024x860'
+        return info
+
+class ProgramFileHandler(FileHandler):
+    def get_detailed_info(self):
+        info = super().get_detailed_info()
+        with open(self.path, 'r', encoding='utf-8') as file:
+            content = file.readlines()
+            info['line_count'] = len(content)
+            info['class_count'] = sum(1 for line in content if 'class ' in line)
+            info['method_count'] = sum(1 for line in content if 'def ' in line)
+        return info
+
+class DirectoryMonitor:
+    def __init__(self, folder_path):
+        self.folder_path = folder_path
+        self.files = {}
+        self.load_files()
+        self.snapshot_time = datetime.datetime.now()
+
+    def load_files(self):
+        for filename in os.listdir(self.folder_path):
+            filepath = os.path.join(self.folder_path, filename)
+            if os.path.isfile(filepath):
+                file_ext = os.path.splitext(filename)[1]
+                if file_ext in ['.txt']:
+                    handler = TextFileHandler(filepath)
+                elif file_ext in ['.png', '.jpg']:
+                    handler = ImageFileHandler(filepath)
+                elif file_ext in ['.py', '.java']:
+                    handler = ProgramFileHandler(filepath)
+                else:
+                    handler = FileHandler(filepath)
+                self.files[filename] = handler
+
+    def commit(self):
+        self.snapshot_time = datetime.datetime.now()
+
+    def get_file_info(self, filename):
+        if filename in self.files:
+            return self.files[filename].get_detailed_info()
+        else:
+            return "File not found."
+
+    def check_status(self):
+        status = {}
+        for filename, handler in self.files.items():
+            current_time = datetime.datetime.fromtimestamp(os.path.getmtime(handler.path))
+            if current_time > self.snapshot_time:
+                status[filename] = "Changed"
+            else:
+                status[filename] = "Unchanged"
+        return status
+
+class CommandInterface:
+    def __init__(self, directory_monitor):
+        self.directory_monitor = directory_monitor
+
+    def run(self):
+        while True:
+            command = input("Enter command: ")
+            if command == "commit":
+                self.directory_monitor.commit()
+                print("Snapshot updated.")
+            elif command.startswith("info "):
+                filename = command.split(" ", 1)[1]
+                info = self.directory_monitor.get_file_info(filename)
+                print(info)
+            elif command == "status":
+                status = self.directory_monitor.check_status()
+                for file, state in status.items():
+                    print(f"{file}: {state}")
+            elif command == "exit":
+                break
+
+if __name__ == "__main__":
+    monitor = DirectoryMonitor("Calea folderului")
+    interface = CommandInterface(monitor)
+    interface.run()
